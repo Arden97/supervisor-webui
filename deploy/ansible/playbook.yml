@@ -1,0 +1,102 @@
+- name: SQL script on local machine
+  hosts: local
+  become: yes
+
+  tasks:
+    - name: Copy SQL script to /tmp
+      copy:
+        src: "{{ playbook_dir }}/../ansible/initial_setup.sql"
+        dest: /tmp/initial_setup.sql
+        owner: postgres
+        group: postgres
+        mode: '0644'
+
+    - name: Run SQL script on local PostgreSQL
+      become_user: postgres
+      shell: psql -U postgres -d postgres -f /tmp/initial_setup.sql
+
+- name: Build and run Docker container locally
+  hosts: local
+  tasks:
+    - name: Build Docker image
+      community.docker.docker_image:
+        name: supervisor-webui-image
+        tag: latest
+        build:
+          path: "{{ playbook_dir }}/../../"
+          dockerfile: deploy/docker/Dockerfile
+          nocache: true
+        source: build
+
+    - name: Remove existing container if exists
+      community.docker.docker_container:
+        name: supervisor-webui
+        state: absent
+        force_kill: true
+
+    - name: Run Docker container
+      community.docker.docker_container:
+        name: supervisor-webui
+        image: supervisor-webui-image:latest
+        state: started
+        restart_policy: unless-stopped
+        env_file: "{{ playbook_dir }}/../docker/supervisor-webui.env"
+        volumes: # TODO: modify this on production
+          - /root/supervisor-webui/logs:/project-of/modules/supervisor-webui/logs
+        network_mode: host
+        detach: true
+
+    - name: Install ssh-keygen (openssh-client) inside container
+      ansible.builtin.command: >
+        docker exec supervisor-webui sh -c
+        'apt-get update && apt-get install -y openssh-client && rm -rf /var/lib/apt/lists/*'
+      register: ssh_install
+      changed_when: "'Setting up openssh-client' in ssh_install.stdout"
+
+    - name: Generate RSA key inside the container (if not exists)
+      ansible.builtin.command: >
+        docker exec supervisor-webui sh -c
+        'test -f /root/.ssh/id_rsa || (mkdir -p /root/.ssh && ssh-keygen -t rsa -b 4096 -f /root/.ssh/id_rsa -N "")'
+
+- name: Add all servers to known_hosts
+  hosts: servers
+  gather_facts: false
+  tasks:
+    - name: Add {{ inventory_hostname }} to known_hosts on control node
+      ansible.builtin.shell: "ssh-keyscan -H {{ inventory_hostname }} >> ~/.ssh/known_hosts"
+      delegate_to: localhost
+      run_once: false
+
+- name: Distribute Nginx config to remote platforms
+  hosts: servers
+  become: yes
+  tasks:
+    - name: Upload Nginx config
+      copy:
+        src: "{{ playbook_dir }}/../nginx/superv-nginx-int.conf"
+        dest: /etc/nginx/conf.d/superv-nginx-int.conf
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Reload Nginx
+      service:
+        name: nginx
+        state: reloaded
+
+- name: Using nginx, create an entry point with a domain name
+  hosts: local
+  become: yes
+  tasks:
+    - name: Upload Nginx config
+      copy:
+        src: "{{ playbook_dir }}/../nginx/superv-nginx-ext.conf"
+        dest: /etc/nginx/conf.d/superv-nginx-ext.conf
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Reload Nginx
+      service:
+        name: nginx
+        state: reloaded

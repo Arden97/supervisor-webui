@@ -95,8 +95,8 @@ CREATE TABLE profiles (
     membership TEXT NOT NULL
 );
 INSERT INTO profiles (username, password, membership) VALUES
-    ('admin', 'password', 'write'),
-    ('control', 'password', 'read');
+    ('admin', '5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8', 'write'),
+    ('control', '5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8', 'read');
 -- TODO: don't forget to change the passwords
 
 COMMIT;

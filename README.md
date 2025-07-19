@@ -1,6 +1,6 @@
 # SupervisorAPI
 
-**Supervisor Webui** is a FastAPI-based web API that allows you to monitor and control remote processes (via `supervisord` XML-RPC APIs) and containers (via the Portainer API). It provides a unified overview and control surface for managing an infrastructure composed of various platforms.
+**SupervisorAPI** is a FastAPI-based API that allows you to monitor and control remote processes (via `supervisord` XML-RPC APIs) and containers (via the Portainer API). It provides a unified overview and control surface for managing an infrastructure composed of various platforms.
 
 ---
 

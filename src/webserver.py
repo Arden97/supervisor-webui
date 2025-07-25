@@ -13,8 +13,8 @@ import psycopg2
 from utils import read_args, SupervisorWebuiUtils
 
 args = read_args()
-supervisor_webui = FastAPI()
-supervisor_webui.add_middleware(
+supervisor_api = FastAPI()
+supervisor_api.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
@@ -64,7 +64,7 @@ def authorize(credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer()))
         raise HTTPException(status_code=401, detail="Unauthorized")
     return session
 
-@supervisor_webui.post("/login", response_model=LoginResponse)
+@supervisor_api.post("/login", response_model=LoginResponse)
 async def login(username: str = Form(...), password: str = Form(...)):
     username_valid, membership = check_credentials(username, password)
 
@@ -83,7 +83,7 @@ async def login(username: str = Form(...), password: str = Form(...)):
     else:
         raise HTTPException(status_code=500, detail="Error, while trying to connect to DB")
 
-@supervisor_webui.get("/get-data")
+@supervisor_api.get("/get-data")
 async def get_data(session: Session = Depends(authorize)):
     data = {
         "server_name": server_utils.run_system_command("hostname"),
@@ -93,19 +93,19 @@ async def get_data(session: Session = Depends(authorize)):
     }
     return JSONResponse(content=data, status_code=200, headers={"Content-Type": "application/json"})
 
-@supervisor_webui.get("/refresh-processes")
+@supervisor_api.get("/refresh-processes")
 async def refresh_processes(platform_endpoint_id: int, supervisor_name: str, session: Session = Depends(authorize)):
     return JSONResponse(content=server_utils.refresh_processes_table(platform_endpoint_id, supervisor_name),
                         status_code=200,
                         headers={"Content-Type": "application/json"})
 
-@supervisor_webui.get("/refresh-containers")
+@supervisor_api.get("/refresh-containers")
 async def refresh_containers(platform_endpoint_id: int, session: Session = Depends(authorize)):
     return JSONResponse(content=server_utils.refresh_containers_table(platform_endpoint_id),
                         status_code=200,
                         headers={"Content-Type": "application/json"})
 
-@supervisor_webui.get("/restart-process")
+@supervisor_api.get("/restart-process")
 async def restart_process(platform_endpoint_id: int, supervisor_name: str, process_name: str, session: Session = Depends(authorize)):
     if session.membership != "write":
         raise HTTPException(status_code=403, detail="Operation not permitted")
@@ -114,7 +114,7 @@ async def restart_process(platform_endpoint_id: int, supervisor_name: str, proce
                         status_code=200,
                         headers={"Content-Type": "application/json"})
 
-@supervisor_webui.get("/restart-container")
+@supervisor_api.get("/restart-container")
 async def restart_container(platform_endpoint_id: int, container_name: str, session: Session = Depends(authorize)):
     if session.membership != "write":
         raise HTTPException(status_code=403, detail="Operation not permitted")
@@ -122,7 +122,7 @@ async def restart_container(platform_endpoint_id: int, container_name: str, sess
                         status_code=200,
                         headers={"Content-Type": "application/json"})
 
-@supervisor_webui.get("/stop-process")
+@supervisor_api.get("/stop-process")
 async def stop_process(platform_endpoint_id: int, supervisor_name: str, process_name: str, session: Session = Depends(authorize)):
     if session.membership != "write":
         raise HTTPException(status_code=403, detail="Operation not permitted")
@@ -131,7 +131,7 @@ async def stop_process(platform_endpoint_id: int, supervisor_name: str, process_
                         status_code=200,
                         headers={"Content-Type": "application/json"})
 
-@supervisor_webui.get("/stop-container")
+@supervisor_api.get("/stop-container")
 async def stop_container(platform_endpoint_id: int, container_name: str, session: Session = Depends(authorize)):
     if session.membership != "write":
         raise HTTPException(status_code=403, detail="Operation not permitted")
@@ -139,19 +139,19 @@ async def stop_container(platform_endpoint_id: int, container_name: str, session
                         status_code=200,
                         headers={"Content-Type": "application/json"})
 
-@supervisor_webui.get("/show-process-logs")
+@supervisor_api.get("/show-process-logs")
 async def show_process_logs(platform_endpoint_id: int, supervisor_name: str, process_name: str, session: Session = Depends(authorize)):
     return JSONResponse(content=server_utils.show_process_logs(platform_endpoint_id, supervisor_name, process_name),
                         status_code=200,
                         headers={"Content-Type": "application/json"})
 
-@supervisor_webui.get("/show-container-logs")
+@supervisor_api.get("/show-container-logs")
 async def show_container_logs(platform_endpoint_id: int, container_name: str, session: Session = Depends(authorize)):
     return JSONResponse(content=server_utils.show_container_logs(platform_endpoint_id, container_name),
                         status_code=200,
                         headers={"Content-Type": "application/json"})
 
-@supervisor_webui.get("/download-process-log")
+@supervisor_api.get("/download-process-log")
 async def download_process_log(platform_endpoint_id: int, supervisor_name: str, process_name: str, log_name: str, session: Session = Depends(authorize)):
     hostname, ssh_user, log_path = server_utils.get_process_log_download_data(platform_endpoint_id, supervisor_name, process_name, log_name)
     return FileResponse(
@@ -160,7 +160,7 @@ async def download_process_log(platform_endpoint_id: int, supervisor_name: str, 
         media_type="application/octet-stream"
     )
 
-@supervisor_webui.get("/download-container-log")
+@supervisor_api.get("/download-container-log")
 async def download_container_log(platform_endpoint_id: int, container_name: str, log_name: str, session: Session = Depends(authorize)):
     hostname, ssh_user, log_path = server_utils.get_container_log_download_data(platform_endpoint_id, container_name, log_name)
     return FileResponse(
@@ -169,12 +169,12 @@ async def download_container_log(platform_endpoint_id: int, container_name: str,
         media_type="application/octet-stream"
     )
 
-@supervisor_webui.get("/logout")
+@supervisor_api.get("/logout")
 async def logout(session: Session = Depends(authorize)):
     SESSIONS.pop(session.token, None)
     return {"result": "success", "notification": f"Goodbye, {session.username}!"}
 
-@supervisor_webui.get("/", response_class=HTMLResponse)
+@supervisor_api.get("/", response_class=HTMLResponse)
 async def index():
     try:
         with open("frontend/index.html", "r", encoding="utf-8") as f:
@@ -186,6 +186,6 @@ async def index():
 
 if __name__ == '__main__':
     import uvicorn
-    uvicorn.run("webserver:supervisor_webui",
+    uvicorn.run("webserver:supervisor_api",
                 host=args.get("host"),
                 port=args.get("port"))

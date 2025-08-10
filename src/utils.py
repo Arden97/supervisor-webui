@@ -633,11 +633,11 @@ class SupervisorWebuiUtils:
             return cursor.fetchone()
 
     def get_process_log_download_data(
-            self,
-            endpoint_id: int,
-            supervisor_name: str,
-            process_name: str,
-            log_name: str
+        self,
+        endpoint_id: int,
+        supervisor_name: str,
+        process_name: str,
+        log_name: str
     ) -> tuple[str, str, str]:
         
         platform = self.get_platform_data(endpoint_id)
@@ -650,11 +650,11 @@ class SupervisorWebuiUtils:
         return platform_host, platform_user, log_path+log_name
 
     def get_container_log_download_data(
-            self,
-            endpoint_id: int,
-            container_name: str,
-            log_name: str
-        ) -> tuple[str, str, str]:
+        self,
+        endpoint_id: int,
+        container_name: str,
+        log_name: str
+    ) -> tuple[str, str, str]:
         
         platform = self.get_platform_data(endpoint_id)
         platform_host = platform[2]

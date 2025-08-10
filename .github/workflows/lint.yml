@@ -11,18 +11,23 @@ concurrency:
   group: lint-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.13'
-          cache: 'pip'
-      - name: Install Ruff
-        run: pip install ruff==0.12.0
+
       - name: Ruff (lint)
-        run: ruff check . --output-format=github --no-cache
+        uses: astral-sh/ruff-action@v3
+        with:
+          version: 0.12.0
+          args: check . --config pyproject.toml --output-format=github --no-cache
+
       - name: Ruff (format check)
-        run: ruff format --check . --config pyproject.toml --no-cache
+        uses: astral-sh/ruff-action@v3
+        with:
+          version: 0.12.0
+          args: format --check . --config pyproject.toml --no-cache

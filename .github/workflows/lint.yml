@@ -1,0 +1,28 @@
+name: Lint (Python)
+
+on:
+  pull_request:
+    paths: ['src/**','tests/**','pyproject.toml','.ruff.toml','.github/workflows/lint.yml']
+  push:
+    branches: [ main ]
+    paths: ['src/**','tests/**','pyproject.toml','.ruff.toml','.github/workflows/lint.yml']
+
+concurrency:
+  group: lint-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - name: Install Ruff
+        run: pip install ruff
+      - name: Ruff (lint)
+        run: ruff check . --config deploy/docker/pyproject.toml --output-format=github
+      - name: Ruff (format check)
+        run: ruff format --check . --config deploy/docker/pyproject.toml

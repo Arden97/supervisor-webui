@@ -1,0 +1,21 @@
+exclude: |
+  (?x)^(
+    deploy/|
+    venv/|\.venv/|
+    build/|dist/
+  )
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.5.7            # pin to the same Ruff version you use in CI
+    hooks:
+      - id: ruff
+        args: [--fix]      # auto-fix lint issues on commit (drop if you prefer warnings only)
+      - id: ruff-format    # formatting (equivalent to: ruff format)
+
+  # Nice but optional hygiene hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: end-of-file-fixer
+      - id: trailing-whitespace

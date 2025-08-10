@@ -1,22 +1,22 @@
-from datetime import datetime
 import argparse
+import base64
 import json
+import os
+import ssl
 import subprocess
 import sys
 import time
-import requests
-import os
-import paramiko
-from typing import Union, Tuple
-import ssl
-import base64
-import xmlrpc
 import traceback
-import psycopg2
-from datetime import datetime, timezone
+import xmlrpc
+from datetime import UTC, datetime
 from xmlrpc.client import (
     ServerProxy,
 )
+
+import paramiko
+import psycopg2
+import requests
+
 
 def read_args() -> dict:
     arg_parser = argparse.ArgumentParser(
@@ -52,7 +52,7 @@ def read_args() -> dict:
         "debug_on": args.debug_on
     }
 
-def read_json(filepath: str) -> Union[dict, None]:
+def read_json(filepath: str) -> dict | None:
     try:
         with open(filepath) as json_file:
             return json.load(json_file)
@@ -72,7 +72,7 @@ class AuthTransport(xmlrpc.client.SafeTransport):
         connection.putheader("Authorization", f"Basic {encoded}")
         super().send_headers(connection, headers)
 
-class SupervisorWebuiUtils():
+class SupervisorWebuiUtils:
     def __init__(self, debug: bool) -> None:
         self.debug = debug
         self.portainer_api_token = os.getenv('PORTAINER_API_TOKEN')
@@ -95,18 +95,20 @@ class SupervisorWebuiUtils():
             cursor.execute("""SELECT * FROM platforms;""")
             platforms = cursor.fetchall()
             for platform in platforms:
-                platform_endpoint_id = platform[0]
-                cursor.execute(f"""SELECT * FROM supervisors WHERE platform_id = '{platform_endpoint_id}';""")
+                endpoint_id = platform[0]
+                cursor.execute(f"""SELECT * FROM supervisors
+                               WHERE platform_id = '{endpoint_id}';""")
                 supervisors = cursor.fetchall()
                 for supervisor in supervisors:
                     context = ssl._create_unverified_context()
                     return_list.append({
-                        "platform_endpoint_id": platform_endpoint_id,
+                        "platform_endpoint_id": endpoint_id,
                         "supervisor_id": supervisor[0],
                         "name": supervisor[1],
                         "api": ServerProxy(
                             f"https://{supervisor[2]}:{supervisor[3]}/supervisor/RPC2",
-                            transport=AuthTransport(supervisor_username, supervisor_password, context),
+                            transport=AuthTransport(supervisor_username,
+                                                    supervisor_password,context),
                             allow_none=True
                         ).supervisor
                     })
@@ -120,9 +122,13 @@ class SupervisorWebuiUtils():
             else:
                 print(f"[DEBUG]: {msg}", file=sys.stderr)
 
-    def run_system_command(self, command: str, debug=True) -> Union[str, None]:
+    def run_system_command(self, command: str, debug=True) -> str | None:
         # Provedeni prikazu
-        response = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=True).stdout
+        response = subprocess.run(command,
+                                  check=False,
+                                  capture_output=True,
+                                  text=True,
+                                  shell=True).stdout
         if len(response) != 0:
             response = response.strip()
         if not response:
@@ -147,11 +153,14 @@ class SupervisorWebuiUtils():
             "seconds": uptime_seconds
         }
 
-    def parse_uptime(self, uptime_str: str) -> Union[tuple, None]:
+    def parse_uptime(self, uptime_str: str) -> tuple | None:
         if not uptime_str:
             return None
 
-        if "-" in uptime_str: # format 1-01:01:01 (proces bezi vice nez 1 den)
+        len_uptime_str_few_minutes = 2
+        len_uptime_str_few_hours = 3
+
+        if "-" in uptime_str: # format 1-01:01:01
             splited = uptime_str.split("-")
             days = int(splited[0])
             tmp = splited[1].split(":")
@@ -159,13 +168,13 @@ class SupervisorWebuiUtils():
             minutes = int(tmp[1])
             seconds = int(tmp[2])
         else:
-            splited = uptime_str.split(":") # format 01:01 (proces bezi jenom nekolik minut)
-            if len(splited) == 2:
+            splited = uptime_str.split(":") # format 01:01
+            if len(splited) == len_uptime_str_few_minutes:
                 days = None
                 hours = None
                 minutes = int(splited[0])
                 seconds = int(splited[1])
-            elif len(splited) == 3: # format 01:01:01 (proces bezi vice nez 1 hodinu)
+            elif len(splited) == len_uptime_str_few_hours: # format 01:01:01
                 days = None
                 hours = int(splited[0])
                 minutes = int(splited[1])
@@ -187,24 +196,47 @@ class SupervisorWebuiUtils():
         }
 
     def get_container_from_config(self, platform: dict, container_name: str) -> dict:
-        return next((c for c in platform.get("containers") if c.get("name") == container_name), None)
+        return next((
+                c
+                for c in platform.get("containers")
+                if c.get("name") == container_name
+            ),
+            None
+        )
 
-    def get_supervisor_by_name(self, platform_endpoint_id: int, supervisor_name: str) -> ServerProxy:
-        return next((s for s in self.supervisors_apis
-                    if s.get("name") == supervisor_name and s.get("platform_endpoint_id") == platform_endpoint_id),
-                    None)
+    def get_supervisor_by_name(self, endpoint_id: int, supervisor_name: str) -> ServerProxy:
+        return next((
+                s
+                for s in self.supervisors_apis
+                if s.get("name") == supervisor_name
+                and s.get("platform_endpoint_id") == endpoint_id
+            ),
+            None
+        )
 
     def get_supervisor_from_config(self, platform: dict, supervisor_name: str) -> dict:
-        return next((s for s in platform.get("supervisors") if s.get("name") == supervisor_name), None)
+        return next((
+                s
+                for s in platform.get("supervisors")
+                if s.get("name") == supervisor_name
+            ),
+            None
+        )
 
     def get_process_from_config(self, supervisor: dict, process_name: str) -> dict:
-        return next((proc for proc in supervisor.get("processes") if proc.get("process_name") ==  process_name), None)
+        return next((
+                proc
+                for proc in supervisor.get("processes")
+                if proc.get("process_name") ==  process_name
+            ),
+            None
+        )
 
-    def get_platform_by_id_from_config(self, platform_endpoint_id: int) -> dict:
-        return next((p for p in self.platforms if p.get("platform_endpoint_id") == platform_endpoint_id), None)
-
-    def get_container_name_by_id(self, platform_endpoint_id: int, container_id: str) -> str:
-        request = f"{self.portainer_url}/endpoints/{platform_endpoint_id}/docker/containers/{container_id}/json"
+    def get_container_name_by_id(self, endpoint_id: int, container_id: str) -> str:
+        request = (
+            f"{self.portainer_url}/endpoints/{endpoint_id}/docker/"
+            f"containers/{container_id}/json"
+        )
         headers = {
             "X-API-Key": self.portainer_api_token,
         }
@@ -219,23 +251,24 @@ class SupervisorWebuiUtils():
             cursor.execute("""SELECT * FROM platforms;""")
             platforms = cursor.fetchall()
             for platform in platforms:
-                platform_endpoint_id = platform[0]
+                endpoint_id = platform[0]
                 platform_name = platform[1]
 
-                cursor.execute(f"""SELECT * FROM supervisors WHERE platform_id = '{platform_endpoint_id}'""")
+                cursor.execute(f"""SELECT * FROM supervisors
+                                WHERE platform_id = '{endpoint_id}'""")
                 supervisors_data = cursor.fetchall()
                 supervisors = []
                 for supervisor in supervisors_data:
                     try:
                         name = supervisor[1]
-                        supervisor_with_api = self.get_supervisor_by_name(platform_endpoint_id, name)
+                        supervisor_with_api = self.get_supervisor_by_name(endpoint_id, name)
                         supervisors.append({
                             "name": name,
                             "processes": self.get_processes_info(supervisor_with_api)
                         })
-                    except Exception as e:
+                    except Exception:
                         self.debug_print("ERROR pri ziskavani informaci o supervisoru")
-                        self.debug_print(f"Platform ID: {platform_endpoint_id}")
+                        self.debug_print(f"Platform ID: {endpoint_id}")
                         self.debug_print(f"Supervisor host: {supervisor[2]}")
                         self.debug_print(f"Supervisor port: {supervisor[3]}")
                         self.debug_print(traceback.format_exc())
@@ -243,7 +276,7 @@ class SupervisorWebuiUtils():
 
                 return_list.append({
                     "name": platform_name,
-                    "platform_endpoint_id": platform_endpoint_id,
+                    "platform_endpoint_id": endpoint_id,
                     "supervisors": supervisors,
                     "portainer": {
                         "name": "Kontejnery",
@@ -255,7 +288,7 @@ class SupervisorWebuiUtils():
 
     def parse_portainer_status_to_uptime(self, start_str: str) -> dict:
         start_time = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
-        uptime = datetime.now(timezone.utc) - start_time
+        uptime = datetime.now(UTC) - start_time
 
         days = uptime.days
         hours, remainder = divmod(uptime.seconds, 3600)
@@ -274,8 +307,8 @@ class SupervisorWebuiUtils():
         headers = {
             "X-API-Key": self.portainer_api_token,
         }
-        endpoint_platform = requests.get(endpoint_url, headers=headers, verify=False).json()
-        containers = endpoint_platform.get("Snapshots")[0].get("DockerSnapshotRaw").get("Containers")
+        platform = requests.get(endpoint_url, headers=headers, verify=False).json()
+        containers = platform.get("Snapshots")[0].get("DockerSnapshotRaw").get("Containers")
         for container in containers:
             container_id = container.get("Id")
             name = container.get("Names")[0].split("/")[1]
@@ -284,8 +317,12 @@ class SupervisorWebuiUtils():
                 continue
             description = container_data[2]
 
-            endpoint_url_to_verify = f"{self.portainer_url}/endpoints/{platform_id}/docker/containers/{container_id}/json"
-            container_state = requests.get(endpoint_url_to_verify, headers=headers, verify=False).json().get("State")
+            endpoint_url_to_verify = (
+                f"{self.portainer_url}/endpoints/{platform_id}/docker/containers/{container_id}/json"
+            )
+            container_state = requests.get(endpoint_url_to_verify,
+                                           headers=headers,
+                                           verify=False).json().get("State")
             state = container_state.get("Status").capitalize()
             if state == "Running":
                 uptime = self.parse_portainer_status_to_uptime(container_state.get("StartedAt"))
@@ -307,11 +344,23 @@ class SupervisorWebuiUtils():
 
         return return_list
 
-    def refresh_processes_table(self, platform_endpoint_id: int, supervisor_name: str) -> dict:
+    def refresh_processes_table(self, endpoint_id: int, supervisor_name: str) -> dict:
         data = self.get_platforms_info()
         try:
-            platform = next((p for p in data if p.get("platform_endpoint_id") == platform_endpoint_id), None)
-            supervisor = next((s for s in platform.get("supervisors") if s.get("name") == supervisor_name), None)
+            platform = next((
+                    p
+                    for p in data
+                    if p.get("platform_endpoint_id") == endpoint_id
+                ),
+                None
+            )
+            supervisor = next((
+                    s
+                    for s in platform.get("supervisors")
+                    if s.get("name") == supervisor_name
+                ),
+                None
+            )
             processes = supervisor.get("processes")
             return {
                 "result": "success",
@@ -330,10 +379,16 @@ class SupervisorWebuiUtils():
                 "processes": []
             }
 
-    def refresh_containers_table(self, platform_endpoint_id: int) -> dict:
+    def refresh_containers_table(self, endpoint_id: int) -> dict:
         data = self.get_platforms_info()
         try:
-            platform = next((p for p in data if p.get("platform_endpoint_id") == platform_endpoint_id), None)
+            platform = next((
+                    p
+                    for p in data
+                    if p.get("platform_endpoint_id") == endpoint_id
+                ),
+                None
+            )
             containers = platform.get("portainer").get("containers")
             return {
                 "result": "success",
@@ -381,7 +436,7 @@ class SupervisorWebuiUtils():
 
         return return_list
 
-    def restart_process(self, supervisor_api: ServerProxy, name: str) -> Tuple[str, str]:
+    def restart_process(self, supervisor_api: ServerProxy, name: str) -> tuple[str, str]:
         process = supervisor_api.getProcessInfo(name)
         if process.get("pid"):
             self.debug_print(f"Zastavení procesu {name}")
@@ -393,7 +448,7 @@ class SupervisorWebuiUtils():
 
         return ("error", f"Při restartu procesu {name} nastala chyba")
 
-    def stop_process(self, supervisor_api: ServerProxy, name: str) -> Tuple[str, str]:
+    def stop_process(self, supervisor_api: ServerProxy, name: str) -> tuple[str, str]:
         process = supervisor_api.getProcessInfo(name)
         if process.get("pid"):
             try:
@@ -405,22 +460,22 @@ class SupervisorWebuiUtils():
         else:
             return ("info", f"Proces {name} nebeží")
 
-    def handle_process_command(self, supervisor_api: ServerProxy, process_name: str, command: str) -> dict:
+    def handle_process_command(self, supervisor_api: ServerProxy, proc_name: str, cmd: str) -> dict:
         commands = {
             "stop": self.stop_process,
             "restart": self.restart_process
         }
-        operation = commands.get(command)
-        result, notification = operation(supervisor_api, process_name)
+        operation = commands.get(cmd)
+        result, notification = operation(supervisor_api, proc_name)
 
         return_dict = {
-            "process_name": process_name,
-            "command": command,
+            "process_name": proc_name,
+            "command": cmd,
             "result": result,
             "notification": notification
         }
 
-        process = supervisor_api.getProcessInfo(process_name)
+        process = supervisor_api.getProcessInfo(proc_name)
         return_dict.update({
             "pid": process.get("pid"),
             "state": process.get("statename").lower().capitalize()
@@ -428,28 +483,31 @@ class SupervisorWebuiUtils():
 
         return return_dict
 
-    def handle_container_command(self, platform_endpoint_id: int, container_id: str, command: str) -> dict:
+    def handle_container_command(self, endpoint_id: int, container_id: str, cmd: str) -> dict:
         commands = {
             "stop": self.stop_container,
             "restart": self.restart_container
         }
-        operation = commands.get(command)
-        result, notification = operation(platform_endpoint_id, container_id)
+        operation = commands.get(cmd)
+        result, notification = operation(endpoint_id, container_id)
 
-        containers = self.get_containers_info(platform_endpoint_id)
-        container_name = self.get_container_name_by_id(platform_endpoint_id, container_id)
+        containers = self.get_containers_info(endpoint_id)
+        container_name = self.get_container_name_by_id(endpoint_id, container_id)
         container = next((c for c in containers if c.get("container_name") == container_name), None)
 
         return {
             "container_id": container_id,
-            "command": command,
+            "command": cmd,
             "state": container.get("state"),
             "result": result,
             "notification": notification
         }
 
-    def stop_container(self, platform_endpoint_id: int, container_id: str) -> Tuple[str, str]:
-        request = f"{self.portainer_url}/endpoints/{platform_endpoint_id}/docker/containers/{container_id}/stop"
+    def stop_container(self, endpoint_id: int, container_id: str) -> tuple[str, str]:
+        request = (
+            f"{self.portainer_url}/endpoints/{endpoint_id}/docker/"
+            f"containers/{container_id}/stop"
+        )
         headers = {
             "X-API-Key": self.portainer_api_token,
         }
@@ -460,8 +518,11 @@ class SupervisorWebuiUtils():
         else:
             return ("error",  "Container was not stopped or it is stopped already")
 
-    def restart_container(self, platform_endpoint_id: int, container_id: str) -> Tuple[str, str]:
-        request = f"{self.portainer_url}/endpoints/{platform_endpoint_id}/docker/containers/{container_id}/restart"
+    def restart_container(self, endpoint_id: int, container_id: str) -> tuple[str, str]:
+        request = (
+            f"{self.portainer_url}/endpoints/{endpoint_id}/docker/"
+            f"containers/{container_id}/restart"
+        )
         headers = {
             "X-API-Key": self.portainer_api_token,
         }
@@ -494,7 +555,8 @@ class SupervisorWebuiUtils():
     def show_container_logs(self, platform_id: int, container_name: str) -> dict:
         container_id = self.get_container_data(platform_id, container_name)[0]
         with self.data_db.cursor() as cursor:
-            cursor.execute(f"""SELECT * FROM container_logs WHERE container_id = '{container_id}';""")
+            cursor.execute(f"""SELECT * FROM container_logs
+                           WHERE container_id = '{container_id}';""")
             logs = cursor.fetchall()
 
         log_names = []
@@ -528,16 +590,17 @@ class SupervisorWebuiUtils():
 
         return filename
 
-    def get_platform_data(self, platform_endpoint_id: int) -> list:
+    def get_platform_data(self, endpoint_id: int) -> list:
         with self.data_db.cursor() as cursor:
-            cursor.execute(f"""SELECT * FROM platforms WHERE id = '{platform_endpoint_id}';""")
+            cursor.execute(f"""SELECT * FROM platforms WHERE id = '{endpoint_id}';""")
 
             return cursor.fetchone()
         
-    def get_supervisor_data(self, platform_endpoint_id: int, supervisor_name: str) -> list:
+    def get_supervisor_data(self, endpoint_id: int, supervisor_name: str) -> list:
         with self.data_db.cursor() as cursor:
-            cursor.execute(f"""SELECT * FROM supervisors WHERE platform_id = '{platform_endpoint_id}'
-                        AND supervisor_name = '{supervisor_name}';""")
+            cursor.execute(f"""SELECT * FROM supervisors 
+                            WHERE platform_id = '{endpoint_id}'
+                            AND supervisor_name = '{supervisor_name}';""")
             
             return cursor.fetchone()
         
@@ -555,9 +618,9 @@ class SupervisorWebuiUtils():
             
             return cursor.fetchone()
         
-    def get_container_data(self, platform_endpoint_id: int, container_name: str) -> list:
+    def get_container_data(self, endpoint_id: int, container_name: str) -> list:
         with self.data_db.cursor() as cursor:
-            cursor.execute(f"""SELECT * FROM containers WHERE platform_id = '{platform_endpoint_id}'
+            cursor.execute(f"""SELECT * FROM containers WHERE platform_id = '{endpoint_id}'
                         AND container_name = '{container_name}';""")
             
             return cursor.fetchone()
@@ -569,21 +632,34 @@ class SupervisorWebuiUtils():
             
             return cursor.fetchone()
 
-    def get_process_log_download_data(self, platform_endpoint_id, supervisor_name, process_name, log_name):
-        platform = self.get_platform_data(platform_endpoint_id)
+    def get_process_log_download_data(
+            self,
+            endpoint_id: int,
+            supervisor_name: str,
+            process_name: str,
+            log_name: str
+    ) -> tuple[str, str, str]:
+        
+        platform = self.get_platform_data(endpoint_id)
         platform_host = platform[2]
         platform_user = platform[3]
-        supervisor_id = self.get_supervisor_data(platform_endpoint_id,supervisor_name)[0]
+        supervisor_id = self.get_supervisor_data(endpoint_id,supervisor_name)[0]
         process_id = self.get_process_data(supervisor_id, process_name)[0]
         log_path = self.get_process_log_data(process_id, log_name)[2]
 
         return platform_host, platform_user, log_path+log_name
 
-    def get_container_log_download_data(self, platform_endpoint_id, container_name, log_name):
-        platform = self.get_platform_data(platform_endpoint_id)
+    def get_container_log_download_data(
+            self,
+            endpoint_id: int,
+            container_name: str,
+            log_name: str
+        ) -> tuple[str, str, str]:
+        
+        platform = self.get_platform_data(endpoint_id)
         platform_host = platform[2]
         platform_user = platform[3]
-        container_id = self.get_container_data(platform_endpoint_id, container_name)[0]
+        container_id = self.get_container_data(endpoint_id, container_name)[0]
         log_path = self.get_container_log_data(container_id, log_name)[2]
 
         return platform_host, platform_user, log_path+log_name

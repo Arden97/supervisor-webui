@@ -14,7 +14,7 @@ RUN mkdir -p ${PROJECT_PATH}/
 
 WORKDIR ${PROJECT_PATH}/
 
-COPY deploy/docker/pyproject.toml deploy/docker/uv.lock ${PROJECT_PATH}/
+COPY pyproject.toml deploy/docker/uv.lock ${PROJECT_PATH}/
 
 RUN uv venv "$VIRTUAL_ENV" && \
     . "$VIRTUAL_ENV/bin/activate" && \

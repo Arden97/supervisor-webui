@@ -23,6 +23,6 @@ jobs:
       - name: Install Ruff
         run: pip install ruff
       - name: Ruff (lint)
-        run: ruff check . --config deploy/docker/pyproject.toml --output-format=github
+        run: ruff check . --output-format=github
       - name: Ruff (format check)
-        run: ruff format --check . --config deploy/docker/pyproject.toml
+        run: ruff format --check .

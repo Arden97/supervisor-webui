@@ -21,7 +21,7 @@ extend-exclude = ["venv", ".venv", "build", "dist", "deploy"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "PL"]
-ignore = ["E203"]
+ignore = ["E203", "B008"]
 
 [tool.ruff.format]
 quote-style = "double"
